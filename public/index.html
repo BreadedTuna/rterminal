@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terminal Emulator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background-color: #000;
+            font-family: 'Courier New', monospace;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #terminal {
+            background-color: #202124;
+            color: #fff;
+            height: 100vh;
+            width: 100vw;
+            padding: 8px;
+            overflow-y: auto;
+            font-size: 16px;
+            line-height: 1.2;
+        }
+
+        .prompt {
+            color: #fff;
+            margin-bottom: 4px;
+            white-space: pre;
+            font-family: 'DejaVu Sans Mono', 'Courier New', Courier, monospace;
+        }
+
+        .prompt-user {
+            color: #87ffc5;
+            font-family: 'DejaVu Sans Mono', 'Courier New', Courier, monospace;
+            font-weight: bold;
+        }
+
+        .prompt-at {
+            color: #87ffc5;
+            font-weight: bold;
+            font-family: 'DejaVu Sans Mono', 'Courier New', Courier, monospace;
+        }
+
+        .prompt-host {
+            color: #87ffc5;
+            font-family: 'DejaVu Sans Mono', 'Courier New', Courier, monospace;
+            font-weight: bold;
+        }
+
+        .prompt-path {
+            color: #87ffc5;
+            font-weight: bold;
+        }
+
+        .prompt-symbol {
+            color: #fff;
+            font-family: 'DejaVu Sans Mono', 'Courier New', Courier, monospace;
+            font-weight: bold;
+        }
+
+        #input-line {
+            display: flex;
+            align-items: center;
+        }
+
+        #command-input {
+            background: transparent;
+            border: none;
+            color: #fff;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            flex-grow: 1;
+            margin-left: 8px;
+            outline: none;
+            padding: 0;
+            line-height: 1.2;
+        }
+
+        .output {
+            color: #fff;
+            margin: 0 0 4px 0;
+            white-space: pre;
+        }
+
+        ::-webkit-scrollbar {
+            width: 0;
+            background: transparent;
+        }
+
+        /* Hide cursor when not typing */
+        #command-input:not(:focus) {
+            caret-color: transparent;
+        }
+    </style>
+</head>
+<body>
+    <div id="terminal">
+        <div id="output-container"></div>
+        <div id="input-line">
+            <span>
+                <span class="prompt-user">user</span><span class="prompt-at">@</span><span class="prompt-host">host</span><span class="prompt-symbol">:</span><span class="prompt-path">~</span><span class="prompt-symbol">$ </span>
+            </span>
+            <input type="text" id="command-input" autofocus>
+        </div>
+    </div>
+
+    <script>
+        const commandInput = document.getElementById('command-input');
+        const outputContainer = document.getElementById('output-container');
+        const terminal = document.getElementById('terminal');
+        let userInfo = { user: 'user', host: 'host', cwd: '~' }; // Default values
+    
+        // Function to update the prompt with actual user info
+        async function updateUserInfo() {
+            try {
+                const response = await fetch('/get-info'); // Node.js endpoint to get user info
+                userInfo = await response.json();
+            } catch (error) {
+                console.error('Failed to fetch user info:', error);
+            }
+        }
+    
+        // Initialize user info
+        updateUserInfo();
+    
+        commandInput.addEventListener('keypress', async function (e) {
+            if (e.key === 'Enter') {
+                const command = this.value;
+    
+                // Display the entered command
+                const commandDiv = document.createElement('div');
+                commandDiv.className = 'prompt';
+                commandDiv.innerHTML = `<span class="prompt-user">${userInfo.user}</span><span class="prompt-at">@</span><span class="prompt-host">${userInfo.host}</span><span class="prompt-symbol">:</span><span class="prompt-path">${userInfo.cwd}</span><span class="prompt-symbol">$ </span>${command}`;
+                outputContainer.appendChild(commandDiv);
+    
+                // Send the command to the backend
+                try {
+                    const response = await fetch('/execute-command', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ command }),
+                    });
+    
+                    const result = await response.json();
+    
+                    // Display the output or error
+                    const outputDiv = document.createElement('div');
+                    outputDiv.className = 'output';
+                    if (result.error) {
+                        outputDiv.textContent = `Error: ${result.error}`;
+                    } else {
+                        outputDiv.textContent = result.output;
+                    }
+                    outputContainer.appendChild(outputDiv);
+                } catch (error) {
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'output';
+                    errorDiv.textContent = `Error: ${error.message}`;
+                    outputContainer.appendChild(errorDiv);
+                }
+    
+                // Clear the input and scroll to the bottom
+                this.value = '';
+                terminal.scrollTop = terminal.scrollHeight;
+    
+                // Update the current directory after command execution
+                await updateUserInfo();
+            }
+        });
+    
+        // Keep focus on input
+        document.addEventListener('click', function () {
+            commandInput.focus();
+        });
+    
+        // Prevent right-click context menu
+        document.addEventListener('contextmenu', function (e) {
+            e.preventDefault();
+        });
+    </script>
+    
+    
+    
+</body>
+</html>
