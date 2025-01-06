@@ -56,7 +56,7 @@
         }
 
         .prompt-path {
-            color: #87ffc5;
+            color: #aecbfa;
             font-weight: bold;
         }
 
@@ -95,9 +95,12 @@
             background: transparent;
         }
 
-        /* Hide cursor when not typing */
         #command-input:not(:focus) {
             caret-color: transparent;
+        }
+
+        input, textarea {
+            caret-color: #87ffc5; /* Change the caret color to red */
         }
     </style>
 </head>
@@ -105,9 +108,7 @@
     <div id="terminal">
         <div id="output-container"></div>
         <div id="input-line">
-            <span>
-                <span class="prompt-user">user</span><span class="prompt-at">@</span><span class="prompt-host">host</span><span class="prompt-symbol">:</span><span class="prompt-path">~</span><span class="prompt-symbol">$ </span>
-            </span>
+            <span id="prompt-container"></span>
             <input type="text" id="command-input" autofocus>
         </div>
     </div>
@@ -116,78 +117,89 @@
         const commandInput = document.getElementById('command-input');
         const outputContainer = document.getElementById('output-container');
         const terminal = document.getElementById('terminal');
-        let userInfo = { user: 'user', host: 'host', cwd: '~' }; // Default values
-    
-        // Function to update the prompt with actual user info
+        const promptContainer = document.getElementById('prompt-container');
+
+        let userInfo = { user: 'user', host: 'host', cwd: '~' };
+
+        function updatePrompt() {
+            const promptTemplate = `
+                <span class="prompt-user">${userInfo.user}</span><span class="prompt-at">@</span><span class="prompt-host">${userInfo.host}</span><span class="prompt-symbol">:</span><span class="prompt-path">${"~" + userInfo.cwd}</span><span class="prompt-symbol">$ </span>
+            `;
+            promptContainer.innerHTML = promptTemplate.trim();
+        }
+
         async function updateUserInfo() {
             try {
-                const response = await fetch('/get-info'); // Node.js endpoint to get user info
-                userInfo = await response.json();
+                const response = await fetch('/info');
+                const newUserInfo = await response.json();
+                userInfo = newUserInfo;
+                updatePrompt();
             } catch (error) {
                 console.error('Failed to fetch user info:', error);
             }
         }
-    
-        // Initialize user info
-        updateUserInfo();
-    
-        commandInput.addEventListener('keypress', async function (e) {
+
+        // Initialize the terminal
+        async function initializeTerminal() {
+            await updateUserInfo();  // Get initial user info
+            updatePrompt();          // Update the prompt immediately
+        }
+
+        async function executeCommand(command) {
+            try {
+                const response = await fetch('/execute', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command }),
+                });
+
+                const result = await response.json();
+                if (result.error) {
+                    return `Error: ${result.error}`;
+                }
+                return result.output || '';
+            } catch (error) {
+                console.error('Failed to execute command:', error);
+                return 'Error: Failed to execute command';
+            }
+        }
+
+        commandInput.addEventListener('keypress', async function(e) {
             if (e.key === 'Enter') {
                 const command = this.value;
-    
+
                 // Display the entered command
                 const commandDiv = document.createElement('div');
                 commandDiv.className = 'prompt';
-                commandDiv.innerHTML = `<span class="prompt-user">${userInfo.user}</span><span class="prompt-at">@</span><span class="prompt-host">${userInfo.host}</span><span class="prompt-symbol">:</span><span class="prompt-path">${userInfo.cwd}</span><span class="prompt-symbol">$ </span>${command}`;
+                commandDiv.innerHTML = `<span class="prompt-user">${userInfo.user}</span><span class="prompt-at">@</span><span class="prompt-host">${userInfo.host}</span><span class="prompt-symbol">:</span><span class="prompt-path">${"~" + userInfo.cwd}</span><span class="prompt-symbol">$ </span>${command}`;
                 outputContainer.appendChild(commandDiv);
-    
-                // Send the command to the backend
-                try {
-                    const response = await fetch('/execute-command', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ command }),
-                    });
-    
-                    const result = await response.json();
-    
-                    // Display the output or error
-                    const outputDiv = document.createElement('div');
-                    outputDiv.className = 'output';
-                    if (result.error) {
-                        outputDiv.textContent = `Error: ${result.error}`;
-                    } else {
-                        outputDiv.textContent = result.output;
-                    }
-                    outputContainer.appendChild(outputDiv);
-                } catch (error) {
-                    const errorDiv = document.createElement('div');
-                    errorDiv.className = 'output';
-                    errorDiv.textContent = `Error: ${error.message}`;
-                    outputContainer.appendChild(errorDiv);
-                }
-    
-                // Clear the input and scroll to the bottom
+
+                // Execute command and display output
+                const output = await executeCommand(command);
+                const outputDiv = document.createElement('div');
+                outputDiv.className = 'output';
+                outputDiv.textContent = output;
+                outputContainer.appendChild(outputDiv);
+
+                // Clear input and scroll to bottom
                 this.value = '';
                 terminal.scrollTop = terminal.scrollHeight;
-    
-                // Update the current directory after command execution
+
+                // Update user info after command execution
                 await updateUserInfo();
             }
         });
-    
+
         // Keep focus on input
-        document.addEventListener('click', function () {
-            commandInput.focus();
-        });
-    
+        document.addEventListener('click', () => commandInput.focus());
+
         // Prevent right-click context menu
-        document.addEventListener('contextmenu', function (e) {
-            e.preventDefault();
-        });
+        document.addEventListener('contextmenu', e => e.preventDefault());
+
+        // Initial user info fetch
+        updateUserInfo();
+
+        initializeTerminal();
     </script>
-    
-    
-    
 </body>
 </html>
